@@ -1,0 +1,1943 @@
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 
+  0016F887            00002 p=16f887
+                      00003 #include    "p16f887.inc"
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ; Build date : Nov 13 2014
+                      00005 ;  MPASM PIC16F887 processor include
+                      00006 ; 
+                      00007 ;  (c) Copyright 1999-2014 Microchip Technology, All rights reserved
+                      00008 ;==========================================================================
+                      00009 
+                      00810         LIST
+                      00004     
+Warning[205]: Found directive in column 1. (CBLOCK)
+                      00005 CBLOCK  0X20 
+  00000020            00006     NUMERO:4        ;BANCO DE NUMEROS INGRESADOS POR TECLADO
+  00000024            00007     SALDO:3         ;SALDO ACTUAL
+  00000027            00008     SALDO_TEMP:3    ;SALDO TEMPORAL PERMITE DETERMINAR SI EL RESULTADO ES CORRECTO Y EVENTUALMENTE (DEPE
+                            NDIENDO DE SU
+                      00009     ;CONSISTENCIA, ES DECIR, SI SE DETERMINA QUE EL RESULTADO ES CORRECTO) SE TRANSFERIRA A SALDO
+  0000002A            00010     CONTRASENA:4    ;CONTRASEÑA 
+  0000002E            00011     REST:3          ;VALOR A RESTAR (Retiro)
+  00000031            00012     SALDO_AUX:3     ;MUESTRA MODIFICABLE DE SALDO_AUX
+  00000034            00013     NUMERO_TEMPORAL ;VARIABLE AUXILIAR TEMPORAL DE TRABAJO
+  00000035            00014     FLAG            ;0, IGUALDAD EN LA CONTRASEÑA;1, NO SE PUEDE HACER RETIRO;
+                      00015                     ;2, COMPLETO EL INGRESO DE CARACTERES EN CAMB_CONTRASEÑA
+  00000036            00016     FLAG_ISR        ;0, HAY CAMBIO EN TECLADO, NO O DATO IMPERCEPTIBLE; 1, DATO INGRESADO (CARACTERES); 
+                            2, B_ATRÁS
+                      00017                     ;3, B_ENTER;4,  B_GOTO_INICIO; 5, BORRAR CARACTER
+  00000037            00018     TECLA           ;VALOR TEMPORAL DE TECLA INGRESADA EN LA ISR
+  00000038            00019     S_TEMP          ;REGISTRO PARA SALVADO DE CONTEXTO EN ISR
+  00000039            00020     W_TEMP          ;REGISTRO PARA SALVADO DE CONTEXTO EN ISR
+  0000003A            00021     m               ;REGISTRO PARA RETARDO
+  0000003B            00022     n               ;REGISTRO PARA RETARDO
+  0000003C            00023     o               ;REGISTRO PARA RETARDO
+  0000003D            00024     LCD_BUSSY_FLAG  ;REGISTRO QUE GUARDA LA LECTURA HECHA DE LA LCD
+  0000003E            00025     I               ;CONTADOR PARA MILISEGUNDOS 
+  0000003F            00026     J               ;VARIABLE CONTADORA EN LA LIBRERIA BANCO
+  00000040            00027     LIM_ESP         ;PERMITA CAMBIAR EL TIEMPO DE ESPERA EN LA RUTINA ESPERA_Xms
+  00000041            00028     CONT_CONTRASENA ;CONTADOR DE CARRACTERES INGRESADOS DE LA CONTRASEÑA
+  00000042            00029     INTENTOS        ;CANTIDAD DE INTENTOS QUE SE HA INGRESADO LA CONTRASEÑA
+Warning[205]: Found directive in column 1. (ENDC)
+                      00030 ENDC    
+                      00031 
+                      00032 RES_VECT  CODE    0x0000            ; processor reset vector
+0000   2???           00033   CALL      OSC_CONF                ;CONFIGURACION DEL OSCILADOR A 8Mhz
+0001   2???           00034   CALL      PORT_CONF               ;CONFIGURACION DE PUERTOS
+0002   2???           00035   CALL      TECLADO_CONFIG          ;CONFIGURA LOS REGISTROS NECESARIOS PARA CONECTAR UN TECLADO MATRICI
+                            AL EN PORTB
+0003   2???           00036     GOTO    MAIN                   ; go to beginning of program
+                      00037 
+                      00038 ISR_MAIN    CODE    0X04
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (ISR)
+0004   2800           00039     GOTO        ISR                 ;INTERRUPT VECTOR
+                      00040     
+                      00041 MAIN_PROG   CODE        0X05                      ; let linker place main program
+Warning[207]: Found label after column 1. (MAIN)
+0005                  00042    MAIN:
+0005   2???           00043    CALL         INI_VAR             ;INICIALIZACIÓN DE TODAS LAS VARIABLES
+0006   2???           00044    CALL         LCD_INIT            ;INICIALIZA LA LCD PARA UN FUTURO USO
+Warning[207]: Found label after column 1. (REINICIO_PROG)
+0007                  00045    REINICIO_PROG:
+0007   138B           00046    BCF          INTCON, GIE         ;DESHABILITA TODAS LAS INTERRUPCIONES
+Error[113]  : Symbol not previously defined (M_BIENVENIDO)
+0008   2000           00047    CALL         M_BIENVENIDO        ;CARGA EL MENSAJE DE BIENVENIDA
+0009   2???           00048    CALL         RET5s               ;ESPERA POR 5s CONE L MENSAJE DE BIENVENIDA
+Warning[207]: Found label after column 1. (MS)
+000A                  00049    MS:
+000A   01B6           00050    CLRF         FLAG_ISR            
+Error[113]  : Symbol not previously defined (M_MENU_PRINP)
+000B   2000           00051    CALL         M_MENU_PRINP        ;CARGA EL MENSAJE DE MENU PRINCIPAL
+000C   178B           00052    BSF          INTCON, GIE         ;HABILITA LAS INTERRUPCIONES
+Warning[207]: Found label after column 1. (START)
+000D                  00053    START:
+000D   3096           00054    MOVLW        .150                
+000E   00C0           00055    MOVWF        LIM_ESP
+000F   2???           00056    CALL         ESPERA_Xms          ;SE EJECUTA UN RETARDO DE 1.5s ANTES DE INICIAR EL DESPLAZAMIENTO
+0010   3064           00057    MOVLW        .100
+0011   00C0           00058    MOVWF        LIM_ESP
+Warning[207]: Found label after column 1. (INI_DESPLAZAMIENTO)
+0012                  00059    INI_DESPLAZAMIENTO:
+0012   1C36           00060    BTFSS        FLAG_ISR,0      ;EVALUA SI HUBO UN CAMBIO VALIDO POR TECLADO PARA IR A LA OPERACIÓN
+                      00061                                 ;EN EL MENÚ DEL BANCO
+0013   2???           00062         GOTO    DESPLAZAMIENTO
+0014   2???           00063    GOTO         MENU_BANCO      
+Warning[207]: Found label after column 1. (DESPLAZAMIENTO)
+0015                  00064    DESPLAZAMIENTO:
+0015   2???           00065    CALL         SHIFT_SCREEN_D  ;MUEVE EL SREEN DE LA PANTALLA
+0016   2???           00066    CALL         ESPERA_Xms      ;ESPERA DE 1 SEGUNDO ANTES DEL SIG CAMBIO EN LA SCREEN
+0017   2???           00067    GOTO         INI_DESPLAZAMIENTO
+                      00068 
+                      00069     #include    "Retardos.inc"
+                      00001 ;CBLOCK
+                      00002 ;    m
+                      00003 ;    n
+                      00004 ;    o
+                      00005 ;ENDC
+                      00006     
+                      00007 ;ESTA RUTINA CONTIENE RETARDOS PARA USO GENERAL
+                      00008     
+0018                  00009 RET2.56s:                ;RETARDO DE 2.56s
+0018   3000           00010     movlw   .0
+0019   2???           00011     goto    start
+001A                  00012 RET2s:                ;RETARDO DE 2.0s
+001A   30C8           00013     movlw   .200
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+001B   2???           00014     goto    start
+001C                  00015 RET1s:                ;RETARDO DE 1s
+001C   3064           00016     movlw   .100
+001D   2???           00017     goto    start
+001E                  00018 RET500ms:                ;RETARDO DE 500ms
+001E   3032           00019     movlw   .50
+001F   2???           00020     goto    start
+0020                  00021 RET400ms:                ;RETARDO DE 400ms
+0020   3028           00022     movlw   .40
+0021   2???           00023     goto    start
+0022                  00024 RET300ms:                 ;RETARDO DE 300ms
+0022   301E           00025     movlw   .30
+0023   2???           00026     goto    start
+0024                  00027 RET200ms:                   ;RETARDO DE 200ms
+0024   3014           00028     movlw   .20
+0025   2???           00029     goto    start
+0026                  00030 RET100ms:                ;RETARDO DE 100ms
+0026   300A           00031     movlw   .10
+0027   2???           00032     goto    start
+0028                  00033 RET90ms:                ;RETARDO DE 90ms
+0028   3009           00034     movlw   .9
+0029   2???           00035     goto    start
+002A                  00036 RET80ms:                ;RETARDO DE 80ms
+002A   3008           00037     movlw   .8
+002B   2???           00038     goto    start
+002C                  00039 RET70ms:                ;RETARDO DE 70ms
+002C   3007           00040     movlw   .7
+002D   2???           00041     goto    start
+002E                  00042 RET60ms:                ;RETARDO DE 60ms
+002E   3006           00043     movlw   .6
+002F   2???           00044     goto    start
+0030                  00045 RET50ms:                ;RETARDO DE 50ms
+0030   3005           00046     movlw   .5
+0031   2???           00047     goto    start
+0032                  00048 RET40ms:                ;RETARDO DE 40ms
+0032   3004           00049     movlw   .4
+0033   2???           00050     goto    start
+0034                  00051 RET30ms:                ;RETARDO DE 30ms
+0034   3003           00052     movlw   .3
+0035   2???           00053     goto    start
+0036                  00054 RET20ms:                ;RETARDO DE 20ms
+0036   3002           00055     movlw   .2
+0037   2???           00056     goto    start
+0038                  00057 RET10ms:                ;RETARDO DE 10ms
+0038   3001           00058     movlw   .1
+0039   2???           00059     goto    start
+003A                  00060 start:
+003A   00BA           00061     movwf   m
+003B   301D           00062     movlw   .29
+003C   00BB           00063     movwf   n
+003D   30E4           00064     movlw   .228
+003E   00BC           00065     movwf   o
+003F   0BBC           00066     decfsz  o,1
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0040   2???           00067         goto    $-1
+0041   0000           00068     nop
+0042   0BBB           00069     decfsz  n,1
+0043   2???           00070         goto    $-6
+0044   0000           00071     nop
+0045   0BBA           00072     decfsz  m,1
+0046   2???           00073         goto    $-.11
+0047   0000           00074     nop
+Warning[203]: Found opcode in column 1. (return)
+0048   0008           00075 return
+                      00076     
+                      00077     
+Warning[207]: Found label after column 1. (RET9ms)
+0049                  00078     RET9ms:                ;RETARDO DE 9ms
+0049   3009           00079     movlw   .9
+004A   2???           00080     goto    start_1ms
+Warning[207]: Found label after column 1. (RET8ms)
+004B                  00081     RET8ms:                ;RETARDO DE 8ms
+004B   3008           00082     movlw   .8
+004C   2???           00083     goto    start_1ms
+Warning[207]: Found label after column 1. (RET7ms)
+004D                  00084     RET7ms:                ;RETARDO DE 8ms
+004D   3007           00085     movlw   .7
+004E   2???           00086     goto    start_1ms
+Warning[207]: Found label after column 1. (RET6ms)
+004F                  00087     RET6ms:                ;RETARDO DE 6ms
+004F   3006           00088     movlw   .6
+0050   2???           00089     goto    start_1ms
+Warning[207]: Found label after column 1. (RET5ms)
+0051                  00090     RET5ms:                ;RETARDO DE 5ms
+0051   3005           00091     movlw   .5
+0052   2???           00092     goto    start_1ms
+Warning[207]: Found label after column 1. (RET4ms)
+0053                  00093     RET4ms:                ;RETARDO DE 4ms
+0053   3004           00094     movlw   .4
+0054   2???           00095     goto    start_1ms
+Warning[207]: Found label after column 1. (RET3ms)
+0055                  00096     RET3ms:                ;RETARDO DE 3ms
+0055   3003           00097     movlw   .3
+0056   2???           00098     goto    start_1ms
+Warning[207]: Found label after column 1. (RET2ms)
+0057                  00099     RET2ms:                ;RETARDO DE 2ms
+0057   3002           00100     movlw   .2
+0058   2???           00101     goto    start_1ms
+Warning[207]: Found label after column 1. (RET1ms)
+0059                  00102     RET1ms:                ;RETARDO DE 1ms
+0059   3001           00103     movlw   .1
+005A   2???           00104     goto    start_1ms
+Warning[207]: Found label after column 1. (start_1ms)
+005B                  00105     start_1ms:
+005B   00BA           00106     movwf   m
+005C   300A           00107     movlw   .10
+005D   00BB           00108     movwf   n
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+005E   3041           00109     movlw   .65
+005F   00BC           00110     movwf   o
+0060   0BBC           00111     decfsz  o,1
+0061   2???           00112         goto    $-1
+0062   0000           00113     nop
+0063   0BBB           00114     decfsz  n,1
+0064   2???           00115         goto    $-6
+0065   0000           00116     nop
+0066   0BBA           00117     decfsz  m,1
+0067   2???           00118         goto    $-.11
+0068   0000           00119     nop
+Warning[203]: Found opcode in column 1. (return)
+0069   0008           00120 return
+                      00121     
+Warning[207]: Found label after column 1. (RET5s)
+006A                  00122     RET5s:                ;RETARDO ESPECIALIZADO DE 5s
+006A   3064           00123     movlw   .100
+006B   00BA           00124     movwf   m
+006C   30D2           00125     movlw   .210
+006D   00BB           00126     movwf   n
+006E   309D           00127     movlw   .157
+006F   00BC           00128     movwf   o
+0070   0BBC           00129     decfsz  o,1
+0071   2???           00130         goto    $-1
+0072   0000           00131     nop
+0073   0BBB           00132     decfsz  n,1
+0074   2???           00133         goto    $-6
+0075   0000           00134     nop
+0076   0BBA           00135     decfsz  m,1
+0077   2???           00136         goto    $-.11
+0078   0000           00137     nop
+Warning[203]: Found opcode in column 1. (return)
+0079   0008           00138 return
+                      00070     #include    "Configuracion.inc"
+                      00001 ;ESTA LIBRERIA TIENE GRAN PARTE DE LAS CONFIGURACIONES INICIALES DE TODO EL PROGRAMA
+                      00002     
+                      00003     ; CONFIG1
+                      00004     ; __config 0xE3F4
+2007   23F4           00005      __CONFIG _CONFIG1, _FOSC_INTRC_NOCLKOUT & _WDTE_OFF & _PWRTE_OFF & _MCLRE_ON & _CP_OFF & _CPD_OFF &
+                             _BOREN_ON & _IESO_OFF & _FCMEN_OFF & _LVP_OFF
+                      00006     ; CONFIG2
+                      00007     ; __config 0xFEFF
+2008   3EFF           00008      __CONFIG _CONFIG2, _BOR4V_BOR21V & _WRT_OFF
+                      00009 
+                      00010 ;OSCILADOR A 8Mhz
+007A                  00011 OSC_CONF:
+007A   1683           00012     bsf     STATUS,RP0
+007B   1303           00013     bcf     STATUS,RP1
+007C   30F1           00014     movlw   0xf1
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+007D   008F           00015     movwf   OSCCON
+007E   1283 1303      00016     banksel PORTA
+0080   0008           00017     return
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00018 
+                      00019 ;SE ASEGURA DE QUE TODOS LOS PINES SON PARA USO DIGITAL
+0081                  00020 PORT_CONF:
+0081   1683 1703      00021     banksel ANSEL
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0083   0188           00022     clrf    ANSEL
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0084   0189           00023     clrf    ANSELH
+0085   1283           00024     bcf     STATUS,RP0
+0086   1303           00025     bcf     STATUS,RP1
+0087   0008           00026     return
+                      00027 
+                      00028 ; CONFIGURA EL PORTB PARA RECIBIR EL TECLADO, ES DECIR, INTERRUPCIONES POR CAMBIO DE ESTADO EN PORTB Y A
+                            LGUNAS DE LAS 
+                      00029 ;REISTENCIAS DE PULL UP
+0088                  00030 TECLADO_CONFIG:
+0088   1683 1303      00031     banksel TRISB
+008A   30F0           00032     movlw   0xf0
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+008B   0086           00033     movwf   TRISB
+008C   1683 1303      00034     banksel OPTION_REG
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+008E   1381           00035     bcf     OPTION_REG,7
+008F   1683 1303      00036     banksel WPUB
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0091   0095           00037     movwf   WPUB
+0092   1683 1303      00038     banksel IOCB
+Message[302]: Register in operand not in bank 0.  Ensure that bank bits are correct.
+0094   0096           00039     movwf   IOCB
+0095   1283 1303      00040     banksel PORTB
+0097   0086           00041     movwf   PORTB
+0098   100B           00042     bcf     INTCON,RBIF
+0099   158B           00043     bsf     INTCON,RBIE
+009A   0008           00044     return
+                      00045     
+                      00046 ;INICIALIZA LAS VARIABLES DEL PROGRAMA PRINCIPAL
+009B                  00047 INI_VAR:
+009B   302A           00048     MOVLW       CONTRASENA
+009C   0084           00049     MOVWF       FSR 
+009D   0180           00050     CLRF        INDF
+009E   0A84           00051     INCF        FSR,1
+009F   304C           00052     MOVLW       CONTRASENA+.34
+00A0   0604           00053     XORWF       FSR,0
+00A1   1D03           00054     BTFSS       STATUS,Z
+00A2   2???           00055         GOTO    $-5
+                      00056     
+00A3   3000           00057     MOVLW       .0
+00A4   00A6           00058     MOVWF       0X26
+00A5   3003           00059     MOVLW       .3
+00A6   00A5           00060     MOVWF       0X25
+00A7   3000           00061     MOVLW       .0
+00A8   00A4           00062     MOVWF       0X24
+Warning[203]: Found opcode in column 1. (RETURN)
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00A9   0008           00063 RETURN
+                      00071     #include    "M_LCD.inc"
+                      00001 ;CBLOCK
+                      00002 ;    LCD_BUSSY_FLAG
+                      00003 ;ENDC
+                      00004 
+                      00005 ;DEFINICIONES DE LA LIBRERIA PARA MÁS FÁCIL ENTENDIMIENTO Y MODIFICACION
+                      00006 #define BUS_DATOS PORTD             ;BUS DE DATOS
+                      00007 #define RS        PORTE,0           ;leer datos de la LCD
+                      00008 #define RW        PORTE,1           ;escribir datos
+                      00009 #define E         PORTE,2           ;enable
+                      00010 
+                      00011 ;CONFIGURACION DE LOS PUERTOS DEL MICROCONTROLADOR PARA EL USO DE LA LCD
+00AA                  00012 LCD_CONFIG:
+00AA   1683           00013     BSF     STATUS,RP0
+00AB   1303           00014     BCF     STATUS,RP1
+00AC   0188           00015     CLRF    BUS_DATOS
+00AD   1009           00016     BCF     RS
+00AE   1089           00017     BCF     RW
+00AF   1109           00018     BCF     E
+00B0   1283           00019     BCF     STATUS,RP0
+00B1   1303           00020     BCF     STATUS,RP1
+00B2   0188           00021     CLRF    BUS_DATOS
+00B3   1009           00022     BCF     RS
+00B4   1089           00023     BCF     RW
+00B5   1109           00024     BCF     E
+Warning[203]: Found opcode in column 1. (RETURN)
+00B6   0008           00025 RETURN
+                      00026 
+                      00027 
+                      00028 ; SECUENCIA DE INICIALIZACIÓN REQUERIDA POR LA LCD
+00B7                  00029 LCD_INIT:
+00B7   2???           00030     CALL    RET40ms
+00B8   2???           00031     CALL    LCD_CONFIG
+00B9   3030           00032     MOVLW   0X30                ; se manda a W antes de irse a cada surtunica de escritura o de comando
+00BA   2???           00033     CALL    LCD_CMD
+00BB   2???           00034     CALL    RET10ms
+00BC   3030           00035     MOVLW   0X30
+00BD   2???           00036     CALL    LCD_CMD
+00BE   2???           00037     CALL    RET10ms
+00BF   3030           00038     MOVLW   0X30
+00C0   2???           00039     CALL    LCD_CMD
+00C1   2???           00040     CALL    RET1ms
+00C2   303F           00041     MOVLW   0X3F
+00C3   2???           00042     CALL    LCD_CMD
+00C4   300C           00043     MOVLW   0X0C
+00C5   2???           00044     CALL    LCD_CMD
+00C6   3006           00045     MOVLW   0X06
+00C7   2???           00046     CALL    LCD_CMD
+00C8   3001           00047     MOVLW   0X01
+00C9   2???           00048     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+00CA   0008           00049 RETURN
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00050 
+                      00051 ; EJECUCIÓN DE UN COMANDO CON LA LCD
+00CB                  00052 LCD_CMD:
+00CB   0088           00053     MOVWF   BUS_DATOS
+00CC   1009           00054     BCF     RS
+00CD   1089           00055     BCF     RW    
+00CE   0000           00056     NOP
+00CF   1509           00057     BSF     E
+00D0   0000           00058     NOP
+00D1   0000           00059     NOP
+00D2   1109           00060     BCF     E
+00D3   2???           00061     CALL    ESPERAR_LCD
+Warning[203]: Found opcode in column 1. (RETURN)
+00D4   0008           00062 RETURN
+                      00063 
+                      00064 ;EJECUCIÓN DE LA ESCRITURA EN PANTALLA EN LA LCD
+00D5                  00065 LCD_DATO:
+00D5   0088           00066     MOVWF   BUS_DATOS
+00D6   1409           00067     BSF     RS
+00D7   1089           00068     BCF     RW
+00D8   0000           00069     NOP
+00D9   1509           00070     BSF     E
+00DA   0000           00071     NOP
+00DB   0000           00072     NOP
+00DC   1109           00073     BCF     E    
+00DD   1009           00074     BCF     RS
+00DE   2???           00075     CALL    ESPERAR_LCD
+Warning[203]: Found opcode in column 1. (RETURN)
+00DF   0008           00076 RETURN
+                      00077 
+                      00078 ;ESTA SUBRUTINA ESPERA HASTA QUE LA BANDERA BF DE LA PANTALLA LCD SEA CERO,
+                      00079 ;LO CUAL INDICA QUE LA LCD SE ENCIENTRA DISPONIBLE PARA RECIBIR OTRO DATO O COMANDO
+00E0                  00080 ESPERAR_LCD:
+                      00081     ; SE CONFIGURA EL PUERTO DE DATOS COMO ENTRADA
+00E0   1683           00082     BSF     STATUS,RP0
+00E1   30FF           00083     MOVLW   0XFF
+00E2   0088           00084     MOVWF   BUS_DATOS
+00E3   1283           00085     BCF     STATUS,RP0
+                      00086     ; RS=0 RW=1 MODO COMANDO Y SE PREPARA LA LCD PARA UNA LECTURA
+00E4   1009           00087     BCF     RS
+00E5   1489           00088     BSF     RW
+00E6   0000           00089     NOP             ;ESPERA UN TIEMPO ANTES DEL FLANCO ASCENDENTE DE ENABLE
+00E7   1509           00090     BSF     E       ; E=1
+00E8   0000           00091     NOP             ; ESPERA DE 500ns 1 Tcy PARA OBTENER EL VALOR CORRECTO DESDE LA LCD
+00E9   0808           00092     MOVF    BUS_DATOS,W         ; LECTURA DE DATOS DESDE LA LCD
+00EA   00BD           00093     MOVWF   LCD_BUSSY_FLAG      ; ALMACENAMIETO EN UNA VARIABLE TEMPORAL 
+00EB   0000           00094     NOP                         ; ESPERA UN Tcy
+00EC   1109           00095     BCF     E                   ; E=0
+00ED   1BBD           00096     BTFSC   LCD_BUSSY_FLAG,7    ; SE VERIFICA EL BIT 7 BF DE LA LCD 
+00EE   2???           00097     GOTO    $-.10               ; SI ES 1 INDICA QUE ESTA OCUPADA, EN DICHO CASO RETROCEDEMOS 10 INSTRUC
+                            CIONES
+00EF   1683           00098     BSF     STATUS,RP0          ; SI BF ES CREO PODEMOS CONTINUAR, POR LO CUAL VOLVEMOS A PONER         
+                                                  
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00F0   0188           00099     CLRF    BUS_DATOS            ;EL PUERTO DE DATOS COMO UNA SALIDA
+00F1   1283           00100     BCF     STATUS,RP0
+00F2   1089           00101     BCF     RW
+Warning[203]: Found opcode in column 1. (RETURN)
+00F3   0008           00102 RETURN
+                      00103 
+                      00104 
+00F4                  00105 SHIFT_SCREEN_D:
+00F4   3018           00106     MOVLW   b'00011000'   ;DESPLAZA LA PANTALLA HACIA LA DERECHA
+00F5   2???           00107     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+00F6   0008           00108 RETURN
+                      00109 
+00F7                  00110 SHIFT_SCREEN_I:
+00F7   301C           00111     MOVLW   b'00011100'   ;DESPLAZA LA PANTALLA HACIA LA IZQUIERDA
+00F8   2???           00112     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+00F9   0008           00113 RETURN
+                      00114 
+                      00115 
+00FA                  00116 CLRSCR:
+00FA   3001           00117     MOVLW   b'00000001' ;CLR LA PANTALA Y VA A HOME
+00FB   2???           00118     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+00FC   0008           00119 RETURN
+                      00120 
+                      00121 
+00FD                  00122 ENTER:
+00FD   30C0           00123     MOVLW   b'11000000'  ;POSICIONA EL CURSOR EN 0X40
+00FE   2???           00124     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+00FF   0008           00125 RETURN
+                      00126 
+0100                  00127 CURSOR_D:
+0100   3014           00128     MOVLW   b'00010100' ;MOVER EL CURSOR A LAS DERECHA
+0101   2???           00129     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+0102   0008           00130 RETURN
+                      00131 
+0103                  00132 CURSOR_I:
+0103   3010           00133     MOVLW   b'00010000'   ;MOVER EL CURSOR A LA IZQUIERDA
+0104   2???           00134     CALL    LCD_CMD
+Warning[203]: Found opcode in column 1. (RETURN)
+0105   0008           00135 RETURN
+                      00072     #include    "ISR.inc"
+                      00073     #include    "BANCO.inc"
+                      00001 ;ESTA RUTINA ES UNA DE LAS MÁS IMPORTANTES DE TODO EL PROGRAMA, PORQUE ES LA QUE LLAMA LAS SUBRUTINAS DE
+                             INTERFACES 
+                      00002 ;GRAFICAS, ADEMÁS SE ENCARGA DE DETERMINAR QUE TIPO DE INTRUCCIONES Y COMANDOS SE LE ESTAN INGRESANDO.
+                      00003 ;EN PRIMERA INSTANCIA SE DETERMINA QUE TIPO DE DATO SE HA INGRESADO (TAG_1, TAG_2, TAG_3) Y SE COLOCA SU
+                             
+                      00004 ;RESPECTIVA INTERFAZ GRAFICA CORRESPONDIENTE, AL INICIO DE CADA INTRUCCIÓN, EXCEPTO CUANDO HAY 
+                      00005 ;UN ERROR (DEFAULT) SE PREGUNTA  LA CONTRASEÑA (ING_CONTR_TAG_1, ING_CONTR_TAG_2, ING_CONTR_TAG_3), LUEG
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                            O
+                      00006 ; SE PROSIGUE EN LA CORRESPONDIENTE INTERFAZ GRAFICA DE LA INTRUCCIÓN Y SE ESPERAN LOS COMANDOS O CARACT
+                            ERES 
+                      00007 ;CORRESPONDIENTES(EN CASO DE 2 NO SE OCUPA) Y SE PROSIGUE CON LA EJECUCIÓN DE LA INSTRUCCIÓN HASTA ACABA
+                            R EN 
+                      00008 ;END_TAG_1, END_TAG_2, END_TAG_3. CABE ACLARAR QUE EN CADA UNA SE EVALUA EL NÚMERO DE VECES QUE SE HA IN
+                            GRESADO
+                      00009 ;LA CONTRASEÑA Y SI ES IGUAL A 4 SE BLOQUEA
+0106                  00010 MENU_BANCO:
+0106   1CB6           00011     BTFSS       FLAG_ISR,1
+0107   2???           00012         GOTO    DEFAULT
+Warning[207]: Found label after column 1. (TAG_1)
+0108                  00013     TAG_1:
+0108   3001           00014     MOVLW       0X01        ;EVALIACIÓN DEL TIPO DE INSTRUCCIÓN
+0109   0623           00015     XORWF       0X23,0
+010A   1D03           00016     BTFSS       STATUS,Z
+010B   2???           00017         GOTO    TAG_2 
+010C   01B6           00018     CLRF        FLAG_ISR    ;SE LIMPIA PARA INDICAR QUE SE ATENDIO LA INTERRUPCIÓN
+Warning[207]: Found label after column 1. (ING_CONTR_TAG_1)
+010D                  00019     ING_CONTR_TAG_1:        ;INTERFAZ GRAFICA Y EVALUACIÓN DE EJECUCIÓN DE COMANDOS
+010D   01C1           00020     CLRF        CONT_CONTRASENA
+010E   2???           00021     CALL        INGRESO_CONTRASENA
+010F   1D36           00022     BTFSS       FLAG_ISR,2
+0110   2???           00023         GOTO    $+5
+0111   01B6           00024     CLRF        FLAG_ISR
+0112   01C1           00025     CLRF        CONT_CONTRASENA
+0113   01C2           00026     CLRF        INTENTOS
+0114   2???           00027     GOTO        MS
+0115   1E36           00028     BTFSS       FLAG_ISR,4
+0116   2???           00029         GOTO    $+5
+0117   01B6           00030     CLRF        FLAG_ISR
+0118   01C1           00031     CLRF        CONT_CONTRASENA
+0119   01C2           00032     CLRF        INTENTOS
+011A   2???           00033     GOTO        REINICIO_PROG
+011B   1C35           00034     BTFSS       FLAG,0
+011C   2???           00035         GOTO    TAG_1_1
+011D   1035           00036     BCF         FLAG,0
+Error[113]  : Symbol not previously defined (M_CONTRASENA_INCORR)
+011E   2000           00037     CALL        M_CONTRASENA_INCORR
+011F   30FA           00038     MOVLW       .250
+0120   00C0           00039     MOVWF       LIM_ESP
+0121   2???           00040     CALL        ESPERA_Xms
+0122   2???           00041     CALL        ESPERA_Xms
+0123   0AC2           00042     INCF        INTENTOS,1
+0124   3004           00043     MOVLW       .4
+0125   0642           00044     XORWF       INTENTOS,0
+0126   1D03           00045     BTFSS       STATUS,Z
+0127   2???           00046         GOTO    ING_CONTR_TAG_1
+Error[113]  : Symbol not previously defined (M_BLOQUEO_BLOQUEO)
+0128   2000           00047     CALL        M_BLOQUEO_BLOQUEO
+0129   01BF           00048     CLRF        J
+012A   2???           00049     CALL        RET2s
+012B   0ABF           00050     INCF        J,1
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+012C   3005           00051     MOVLW       .5          ;30*2 = 60s
+012D   063F           00052     XORWF       J,0
+012E   1D03           00053     BTFSS       STATUS,Z
+012F   2???           00054         GOTO    $-5     
+0130   01B6           00055     CLRF        FLAG_ISR
+0131   01C1           00056     CLRF        CONT_CONTRASENA
+0132   01C2           00057     CLRF        INTENTOS
+0133   2???           00058     GOTO        REINICIO_PROG
+                      00059     
+Warning[207]: Found label after column 1. (TAG_1_1)
+0134                  00060     TAG_1_1:
+Error[113]  : Symbol not previously defined (M_RETIRO)
+0134   2000           00061     CALL        M_RETIRO
+0135   3096           00062     MOVLW       .150
+0136   00C0           00063     MOVWF       LIM_ESP
+0137   2???           00064     CALL        ESPERA_Xms
+0138   3064           00065     MOVLW       .100
+0139   00C0           00066     MOVWF       LIM_ESP
+Warning[207]: Found label after column 1. (INI_DESPLAZAMIENTO_BANCO)
+013A                  00067     INI_DESPLAZAMIENTO_BANCO:
+013A   1C36           00068     BTFSS       FLAG_ISR,0
+013B   2???           00069         GOTO    DESPLAZAMIENTO_BANCO
+013C   1036           00070     BCF         FLAG_ISR,0
+013D   1CB6           00071     BTFSS       FLAG_ISR,1
+013E   2???           00072         GOTO    CMD
+                      00073         
+013F   3001           00074     MOVLW       .1
+0140   0623           00075     XORWF       0X23,0
+0141   1D03           00076     BTFSS       STATUS,Z
+0142   2???           00077         GOTO    $+8
+0143   3005           00078     MOVLW       .5
+0144   00B0           00079     MOVWF       0X30
+0145   3000           00080     MOVLW       .0
+0146   00AF           00081     MOVWF       0X2F
+0147   3000           00082     MOVLW       .0
+0148   00AE           00083     MOVWF       0X2E
+0149   2???           00084     GOTO        RET_VAL
+                      00085     
+014A   3002           00086     MOVLW       .2
+014B   0623           00087     XORWF       0X23,0
+014C   1D03           00088     BTFSS       STATUS,Z
+014D   2???           00089         GOTO    $+8
+014E   3000           00090     MOVLW       .0
+014F   00B0           00091     MOVWF       0X30
+0150   3001           00092     MOVLW       .1
+0151   00AF           00093     MOVWF       0X2F
+0152   3000           00094     MOVLW       .0
+0153   00AE           00095     MOVWF       0X2E
+0154   2???           00096     GOTO        RET_VAL
+                      00097     
+0155   3003           00098     MOVLW       .3
+0156   0623           00099     XORWF       0X23,0
+0157   1D03           00100     BTFSS       STATUS,Z
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0158   2???           00101         GOTO    $+8
+0159   3005           00102     MOVLW       .5
+015A   00B0           00103     MOVWF       0X30
+015B   3001           00104     MOVLW       .1
+015C   00AF           00105     MOVWF       0X2F
+015D   3000           00106     MOVLW       .0
+015E   00AE           00107     MOVWF       0X2E
+015F   2???           00108     GOTO        RET_VAL
+                      00109     
+0160   3004           00110     MOVLW       .4
+0161   0623           00111     XORWF       0X23,0
+0162   1D03           00112     BTFSS       STATUS,Z
+0163   2???           00113         GOTO    $+8
+0164   3000           00114     MOVLW       .0
+0165   00B0           00115     MOVWF       0X30
+0166   3002           00116     MOVLW       .2
+0167   00AF           00117     MOVWF       0X2F
+0168   3000           00118     MOVLW       .0
+0169   00AE           00119     MOVWF       0X2E
+016A   2???           00120     GOTO        RET_VAL 
+                      00121     
+Warning[207]: Found label after column 1. (ERRORES)
+016B                  00122     ERRORES:
+016B   01B6           00123     CLRF        FLAG_ISR
+016C   01C1           00124     CLRF        CONT_CONTRASENA
+Error[113]  : Symbol not previously defined (M_ERROR)
+016D   2000           00125     CALL        M_ERROR
+016E   3096           00126     MOVLW       .150
+016F   00C0           00127     MOVWF       LIM_ESP
+0170   2???           00128     CALL        ESPERA_Xms
+0171   2???           00129     CALL        ESPERA_Xms
+0172   2???           00130     GOTO        TAG_1_1
+                      00131     
+Warning[207]: Found label after column 1. (CMD)
+0173                  00132     CMD:
+0173   1D36           00133     BTFSS       FLAG_ISR,2
+0174   2???           00134         GOTO    $+3
+0175   1136           00135     BCF         FLAG_ISR,2
+0176   2???           00136     GOTO        END_TAG_1
+0177   1E36           00137     BTFSS       FLAG_ISR,4
+0178   2???           00138         GOTO    $+6
+0179   1236           00139     BCF         FLAG_ISR,4
+017A   01B6           00140     CLRF        FLAG_ISR
+017B   01C1           00141     CLRF        CONT_CONTRASENA
+017C   01C2           00142     CLRF        INTENTOS
+017D   2???           00143     GOTO        REINICIO_PROG
+017E   2???           00144         GOTO    ERRORES
+                      00145         
+Warning[207]: Found label after column 1. (RET_VAL)
+017F                  00146     RET_VAL:
+017F   2???           00147     CALL        RETIRO
+0180   1CB5           00148     BTFSS       FLAG,1
+0181   2???           00149         GOTO    RET_POSIBLE
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0182   10B5           00150     BCF         FLAG,1
+Error[113]  : Symbol not previously defined (M_INSUFICIENTE)
+0183   2000           00151     CALL        M_INSUFICIENTE
+0184   30FA           00152     MOVLW       .250
+0185   00C0           00153     MOVWF       LIM_ESP
+0186   2???           00154     CALL        ESPERA_Xms
+0187   2???           00155     CALL        ESPERA_Xms
+0188   2???           00156     GOTO        END_TAG_1
+Warning[207]: Found label after column 1. (RET_POSIBLE)
+0189                  00157     RET_POSIBLE:
+Error[113]  : Symbol not previously defined (M_SATISFACTORIO)
+0189   2000           00158     CALL        M_SATISFACTORIO
+018A   30FA           00159     MOVLW       .250
+018B   00C0           00160     MOVWF       LIM_ESP
+018C   2???           00161     CALL        ESPERA_Xms
+018D   2???           00162     CALL        ESPERA_Xms
+Error[113]  : Symbol not previously defined (M_PREFERIDO)
+018E   2000           00163     CALL        M_PREFERIDO
+018F   2???           00164     CALL        ESPERA_Xms
+0190   2???           00165     CALL        ESPERA_Xms
+                      00166     
+0191   2???           00167     GOTO        END_TAG_1
+Warning[207]: Found label after column 1. (DESPLAZAMIENTO_BANCO)
+0192                  00168     DESPLAZAMIENTO_BANCO:
+0192   2???           00169     CALL        SHIFT_SCREEN_D
+0193   2???           00170     CALL        ESPERA_Xms
+0194   2???           00171     GOTO        INI_DESPLAZAMIENTO_BANCO
+                      00172     
+Warning[207]: Found label after column 1. (END_TAG_1)
+0195                  00173     END_TAG_1:
+0195   01B6           00174     CLRF        FLAG_ISR
+0196   01C1           00175     CLRF        CONT_CONTRASENA
+0197   01C2           00176     CLRF        INTENTOS
+0198   2???           00177     GOTO        MS
+                      00178     
+                      00179     ;---------------------------------------------------------------------------------------------------
+                            ----------
+Warning[207]: Found label after column 1. (TAG_2)
+0199                  00180     TAG_2:
+0199   3002           00181     MOVLW       0X02
+019A   0623           00182     XORWF       0X23,0
+019B   1D03           00183     BTFSS       STATUS,Z
+019C   2???           00184         GOTO    TAG_3
+019D   01B6           00185     CLRF        FLAG_ISR
+Warning[207]: Found label after column 1. (ING_CONTR_TAG_2)
+019E                  00186     ING_CONTR_TAG_2:
+019E   01C1           00187     CLRF        CONT_CONTRASENA
+019F   2???           00188     CALL        INGRESO_CONTRASENA
+01A0   1D36           00189     BTFSS       FLAG_ISR,2
+01A1   2???           00190         GOTO    $+5
+01A2   01B6           00191     CLRF        FLAG_ISR
+01A3   01C1           00192     CLRF        CONT_CONTRASENA
+01A4   01C2           00193     CLRF        INTENTOS
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01A5   2???           00194     GOTO        MS
+01A6   1E36           00195     BTFSS       FLAG_ISR,4
+01A7   2???           00196         GOTO    $+5
+01A8   01B6           00197     CLRF        FLAG_ISR
+01A9   01C1           00198     CLRF        CONT_CONTRASENA
+01AA   01C2           00199     CLRF        INTENTOS
+01AB   2???           00200     GOTO        REINICIO_PROG
+01AC   1C35           00201     BTFSS       FLAG,0
+01AD   2???           00202         GOTO    TAG_2_1
+01AE   1035           00203     BCF         FLAG,0
+Error[113]  : Symbol not previously defined (M_CONTRASENA_INCORR)
+01AF   2000           00204     CALL        M_CONTRASENA_INCORR
+01B0   30FA           00205     MOVLW       .250
+01B1   00C0           00206     MOVWF       LIM_ESP
+01B2   2???           00207     CALL        ESPERA_Xms
+01B3   2???           00208     CALL        ESPERA_Xms
+01B4   0AC2           00209     INCF        INTENTOS,1
+01B5   3004           00210     MOVLW       .4
+01B6   0642           00211     XORWF       INTENTOS,0
+01B7   1D03           00212     BTFSS       STATUS,Z
+01B8   2???           00213         GOTO    ING_CONTR_TAG_2
+Error[113]  : Symbol not previously defined (M_BLOQUEO_BLOQUEO)
+01B9   2000           00214     CALL        M_BLOQUEO_BLOQUEO
+01BA   01BF           00215     CLRF        J
+01BB   2???           00216     CALL        RET2s
+01BC   0ABF           00217     INCF        J,1
+01BD   3005           00218     MOVLW       .5          ;30*2 = 60s
+01BE   063F           00219     XORWF       J,0
+01BF   1D03           00220     BTFSS       STATUS,Z
+01C0   2???           00221         GOTO    $-5     
+01C1   01B6           00222     CLRF        FLAG_ISR
+01C2   01C1           00223     CLRF        CONT_CONTRASENA
+01C3   01C2           00224     CLRF        INTENTOS
+01C4   2???           00225     GOTO        REINICIO_PROG
+Warning[207]: Found label after column 1. (TAG_2_1)
+01C5                  00226     TAG_2_1:
+01C5   01C2           00227     CLRF        INTENTOS
+Error[113]  : Symbol not previously defined (M_SALDO)
+01C6   2000           00228     CALL        M_SALDO
+01C7   30FA           00229     MOVLW       .250
+01C8   00C0           00230     MOVWF       LIM_ESP
+01C9   2???           00231     CALL        ESPERA_Xms
+01CA   2???           00232     CALL        ESPERA_Xms
+01CB   01B6           00233     CLRF        FLAG_ISR
+01CC   01C1           00234     CLRF        CONT_CONTRASENA
+01CD   01C2           00235     CLRF        INTENTOS
+01CE   2???           00236     GOTO        MS
+                      00237     
+                      00238     ;---------------------------------------------------------------------------------------------------
+                            -----
+Warning[207]: Found label after column 1. (TAG_3)
+01CF                  00239     TAG_3:
+01CF   3003           00240     MOVLW       0X03
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01D0   0623           00241     XORWF       0X23,0
+01D1   1D03           00242     BTFSS       STATUS,Z
+01D2   2???           00243         GOTO    DEFAULT
+                      00244         
+01D3   01B6           00245     CLRF        FLAG_ISR
+Warning[207]: Found label after column 1. (ING_CONTR_TAG_3)
+01D4                  00246     ING_CONTR_TAG_3:
+01D4   01C1           00247     CLRF        CONT_CONTRASENA
+01D5   2???           00248     CALL        INGRESO_CONTRASENA
+01D6   1D36           00249     BTFSS       FLAG_ISR,2
+01D7   2???           00250         GOTO    $+5
+01D8   01B6           00251     CLRF        FLAG_ISR
+01D9   01C1           00252     CLRF        CONT_CONTRASENA
+01DA   01C2           00253     CLRF        INTENTOS
+01DB   2???           00254     GOTO        MS
+01DC   1E36           00255     BTFSS       FLAG_ISR,4
+01DD   2???           00256         GOTO    $+5
+01DE   01B6           00257     CLRF        FLAG_ISR
+01DF   01C1           00258     CLRF        CONT_CONTRASENA
+01E0   01C2           00259     CLRF        INTENTOS
+01E1   2???           00260     GOTO        REINICIO_PROG
+01E2   1C35           00261     BTFSS       FLAG,0
+01E3   2???           00262         GOTO    TAG_3_1
+01E4   1035           00263     BCF         FLAG,0
+Error[113]  : Symbol not previously defined (M_CONTRASENA_INCORR)
+01E5   2000           00264     CALL        M_CONTRASENA_INCORR
+01E6   30FA           00265     MOVLW       .250
+01E7   00C0           00266     MOVWF       LIM_ESP
+01E8   2???           00267     CALL        ESPERA_Xms
+01E9   2???           00268     CALL        ESPERA_Xms
+01EA   0AC2           00269     INCF        INTENTOS,1
+01EB   3004           00270     MOVLW       .4
+01EC   0642           00271     XORWF       INTENTOS,0
+01ED   1D03           00272     BTFSS       STATUS,Z
+01EE   2???           00273         GOTO    ING_CONTR_TAG_3
+Error[113]  : Symbol not previously defined (M_BLOQUEO_BLOQUEO)
+01EF   2000           00274     CALL        M_BLOQUEO_BLOQUEO
+01F0   01BF           00275     CLRF        J
+01F1   2???           00276     CALL        RET2s
+01F2   0ABF           00277     INCF        J,1
+01F3   3005           00278     MOVLW       .5          ;30*2 = 60s
+01F4   063F           00279     XORWF       J,0
+01F5   1D03           00280     BTFSS       STATUS,Z
+01F6   2???           00281         GOTO    $-5     
+01F7   01B6           00282     CLRF        FLAG_ISR
+01F8   01C1           00283     CLRF        CONT_CONTRASENA
+01F9   01C2           00284     CLRF        INTENTOS
+01FA   2???           00285     GOTO        REINICIO_PROG
+                      00286     
+Warning[207]: Found label after column 1. (TAG_3_1)
+01FB                  00287     TAG_3_1:
+01FB   01B6           00288     CLRF        FLAG_ISR
+01FC   01C1           00289     CLRF        CONT_CONTRASENA
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+01FD   01C2           00290     CLRF        INTENTOS
+Error[113]  : Symbol not previously defined (M_NUEVA_CONTR)
+01FE   2000           00291     CALL        M_NUEVA_CONTR   
+01FF   01B6           00292     CLRF        FLAG_ISR
+Warning[207]: Found label after column 1. (HAB_BANCO)
+0200                  00293     HAB_BANCO:
+0200   1C36           00294     BTFSS       FLAG_ISR,0
+0201   2???           00295         GOTO    $-1
+0202   1036           00296     BCF         FLAG_ISR,0
+Warning[207]: Found label after column 1. (SET_INSTRUCT_BANCO)
+0203                  00297     SET_INSTRUCT_BANCO:
+0203   1DB6           00298     BTFSS       FLAG_ISR,3
+0204   2???           00299         GOTO    ATRAS_BANCO
+0205   11B6           00300     BCF         FLAG_ISR,3
+0206   2???           00301     CALL        ENTER_CMD_BANCO         
+0207   1D35           00302     BTFSS       FLAG,2                  
+0208   2???           00303          GOTO   CAM_CONTR_INV
+0209   1135           00304     BCF         FLAG,2
+020A   0823           00305     MOVF        0X23,0
+020B   00AD           00306     MOVWF       0X2D
+020C   0822           00307     MOVF        0X22,0
+020D   00AC           00308     MOVWF       0X2C
+020E   0821           00309     MOVF        0X21,0
+020F   00AB           00310     MOVWF       0X2B
+0210   0820           00311     MOVF        0X20,0
+0211   00AA           00312     MOVWF       0X2A
+Error[113]  : Symbol not previously defined (M_CAMB_CONTR)
+0212   2000           00313     CALL        M_CAMB_CONTR
+0213   30FA           00314     MOVLW       .250
+0214   00C0           00315     MOVWF       LIM_ESP
+0215   2???           00316     CALL        ESPERA_Xms
+0216   2???           00317     CALL        ESPERA_Xms
+0217   2???           00318     CALL        END_TAG_3
+Warning[207]: Found label after column 1. (CAM_CONTR_INV)
+0218                  00319     CAM_CONTR_INV:
+Error[113]  : Symbol not previously defined (M_CAMB_CONTR_ERR)
+0218   2000           00320     CALL        M_CAMB_CONTR_ERR
+0219   30FA           00321     MOVLW       .250
+021A   00C0           00322     MOVWF       LIM_ESP
+021B   2???           00323     CALL        ESPERA_Xms
+021C   2???           00324     CALL        ESPERA_Xms
+021D   01B6           00325     CLRF        FLAG_ISR
+021E   01C1           00326     CLRF        CONT_CONTRASENA
+021F   01C2           00327     CLRF        INTENTOS
+0220   2???           00328     GOTO        TAG_3_1
+                      00329     
+Warning[207]: Found label after column 1. (ATRAS_BANCO)
+0221                  00330     ATRAS_BANCO:
+0221   1D36           00331     BTFSS       FLAG_ISR,2
+0222   2???           00332         GOTO    $+3
+0223   1136           00333     BCF         FLAG_ISR,2
+0224   2???           00334     GOTO        END_TAG_3
+0225   1E36           00335     BTFSS       FLAG_ISR,4
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0226   2???           00336         GOTO    $+5
+0227   01B6           00337     CLRF        FLAG_ISR
+0228   01C1           00338     CLRF        CONT_CONTRASENA
+0229   01C2           00339     CLRF        INTENTOS
+022A   2???           00340     GOTO        REINICIO_PROG
+022B   1EB6           00341     BTFSS       FLAG_ISR,5
+022C   2???           00342         GOTO    DATO_ING_BANCO
+022D   12B6           00343     BCF         FLAG_ISR,5
+022E   2???           00344     CALL        CURSOR_I
+022F   3020           00345     MOVLW       " "
+0230   2???           00346     CALL        LCD_DATO
+0231   2???           00347     CALL        CURSOR_I
+0232   2???           00348     GOTO        HAB_BANCO
+Warning[207]: Found label after column 1. (DATO_ING_BANCO)
+0233                  00349     DATO_ING_BANCO:
+0233   1CB6           00350     BTFSS       FLAG_ISR,1
+0234   2???           00351         GOTO    HAB_BANCO
+0235   10B6           00352     BCF         FLAG_ISR,1
+0236   302A           00353     MOVLW       "*"
+0237   2???           00354     CALL        LCD_DATO
+0238   2???           00355     GOTO        HAB_BANCO
+                      00356     
+Warning[207]: Found label after column 1. (END_TAG_3)
+0239                  00357     END_TAG_3:
+0239   01B6           00358     CLRF        FLAG_ISR
+023A   01C1           00359     CLRF        CONT_CONTRASENA
+023B   01C2           00360     CLRF        INTENTOS
+023C   2???           00361     GOTO        MS
+                      00362     
+                      00363     
+                      00364 ;-------------------------------------------------------------------------------------------------------
+                            ----------
+Warning[207]: Found label after column 1. (DEFAULT)
+023D                  00365     DEFAULT:
+023D   01B6           00366     CLRF        FLAG_ISR
+023E   01C1           00367     CLRF        CONT_CONTRASENA
+Error[113]  : Symbol not previously defined (M_ERROR)
+023F   2000           00368     CALL        M_ERROR
+0240   3096           00369     MOVLW       .150
+0241   00C0           00370     MOVWF       LIM_ESP
+0242   2???           00371     CALL        ESPERA_Xms
+0243   2???           00372     CALL        ESPERA_Xms
+0244   2???           00373     GOTO        MS
+                      00374 ;-------------------------------------------------------------------------------------------------------
+                            ---------                                                    
+                      00375 
+                      00376     ;RUTINA ENCARGADA DE HACER LA INTERFAZ GRAFICA DE LA LCD, ADEMAS QUE SE ENCARGA DE TOMAR DECICIONES 
+                            COMO
+                      00377     ;RETROCEDER, IR AL INICIO, BORRAR CARACTER, INGRESAR CARACTER Y LA ACCIÓN DE ENTER (COMPARAR LOS DAT
+                            OS INGRESADOS
+                      00378     ;CON LOS GUARDADOS)
+Warning[207]: Found label after column 1. (INGRESO_CONTRASENA)
+0245                  00379     INGRESO_CONTRASENA:
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[113]  : Symbol not previously defined (M_INGRESE_CONTR)
+0245   2000           00380     CALL        M_INGRESE_CONTR         ;cargar mensaje en LCD
+0246   2???           00381     CALL        ENTER
+Warning[207]: Found label after column 1. (HAB)
+0247                  00382     HAB:
+0247   1C36           00383     BTFSS       FLAG_ISR,0
+0248   2???           00384         GOTO    $-1
+0249   1036           00385     BCF         FLAG_ISR,0
+Warning[207]: Found label after column 1. (SET_INSTRUCT)
+024A                  00386     SET_INSTRUCT:
+024A   1DB6           00387     BTFSS       FLAG_ISR,3
+024B   2???           00388         GOTO    ATRAS
+024C   2???           00389     CALL        ENTER_CMD
+024D   2???           00390     GOTO        FIN_INGRESO_CONTRASENA
+Warning[207]: Found label after column 1. (ATRAS)
+024E                  00391     ATRAS:
+024E   1936           00392     BTFSC       FLAG_ISR,2
+024F   2???           00393         GOTO    FIN_INGRESO_CONTRASENA
+0250   1A36           00394     BTFSC       FLAG_ISR,4
+0251   2???           00395         GOTO    FIN_INGRESO_CONTRASENA
+0252   1EB6           00396     BTFSS       FLAG_ISR,5
+0253   2???           00397         GOTO    DATO_ING
+0254   12B6           00398     BCF         FLAG_ISR,5
+0255   2???           00399     CALL        CURSOR_I
+0256   3020           00400     MOVLW       " "
+0257   2???           00401     CALL        LCD_DATO
+0258   2???           00402     CALL        CURSOR_I
+0259   2???           00403     GOTO        HAB
+Warning[207]: Found label after column 1. (DATO_ING)
+025A                  00404     DATO_ING:
+025A   1CB6           00405     BTFSS       FLAG_ISR,1
+025B   2???           00406         GOTO    HAB
+025C   10B6           00407     BCF         FLAG_ISR,1
+025D   302A           00408     MOVLW       "*"
+025E   2???           00409     CALL        LCD_DATO
+025F   2???           00410     GOTO        HAB
+0260                  00411 FIN_INGRESO_CONTRASENA:
+0260   0008           00412     RETURN
+                      00413         
+                      00414     
+                      00415     ;RUTINA QUE SE ENCARGA DE COMPARAR LOS DATOS INGRESADOS COMO CARACTERES DE LA CONTRASEÑA
+                      00416     ; Y RETORNA UNA BANDERA QUE INDICA SI SON IGUALES O NO  FLAG,0
+0261                  00417 ENTER_CMD:
+0261   3004           00418     MOVLW       0X04
+0262   0641           00419     XORWF       CONT_CONTRASENA,0
+0263   1903           00420     BTFSC       STATUS,Z
+0264   2???           00421         GOTO    $+3
+0265   1435           00422     BSF         FLAG,0
+0266   0008           00423     RETURN
+0267   1035           00424     BCF         FLAG,0
+0268   3020           00425     MOVLW       NUMERO
+0269   0084           00426     MOVWF       FSR
+Warning[207]: Found label after column 1. (INICIO_CONTR)
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+026A                  00427     INICIO_CONTR:
+026A   0800           00428     MOVF        INDF,0
+026B   00B4           00429     MOVWF       NUMERO_TEMPORAL
+026C   300A           00430     MOVLW       .10
+026D   0784           00431     ADDWF       FSR,1
+026E   0800           00432     MOVF        INDF,0
+026F   0634           00433     XORWF       NUMERO_TEMPORAL,0
+0270   1903           00434     BTFSC       STATUS,Z
+0271   2???           00435         GOTO    $+3
+0272   1435           00436     BSF         FLAG,0
+0273   0008           00437     RETURN
+                      00438     
+0274   0A84           00439     INCF        FSR,1
+0275   300A           00440     MOVLW       .10
+0276   0284           00441     SUBWF       FSR,1
+0277   3024           00442     MOVLW       0X24
+0278   0604           00443     XORWF       FSR,0
+0279   1D03           00444     BTFSS       STATUS,Z
+027A   2???           00445         GOTO    INICIO_CONTR    
+027B   11B6           00446     BCF         FLAG_ISR,3
+027C   01C1           00447     CLRF        CONT_CONTRASENA
+027D   0008           00448     RETURN
+                      00449     
+                      00450 ;COMPARA SI SE HAN INGRESADO 4 CARACTERES DESPUÉS DE OPRIMIR ENTER
+027E                  00451 ENTER_CMD_BANCO:
+027E   1135           00452     BCF         FLAG,2
+027F   3004           00453     MOVLW       0X04
+0280   0641           00454     XORWF       CONT_CONTRASENA,0
+0281   1903           00455     BTFSC       STATUS,Z
+0282   1535           00456         BSF     FLAG,2
+0283   0008           00457     RETURN
+                      00458 ;-------------------------------------------------------------------------------------------------------
+                            -----------
+                      00459     ;ESPERA VARIABLE CON SALIDA POR UNA INTERRUPCIÓN VALIDA EN TECLADO
+0284                  00460 ESPERA_Xms:
+0284   01BE           00461    CLRF         I
+Warning[207]: Found label after column 1. (TEMP)
+0285                  00462    TEMP:
+0285   2???           00463    CALL         RET10ms
+0286   1836           00464    BTFSC        FLAG_ISR,0              ;CAMBIO EN TECLADO
+0287   0008           00465         RETURN
+0288   0ABE           00466    INCF         I,1
+0289   0840           00467    MOVF         LIM_ESP,0
+028A   063E           00468    XORWF        I,0
+028B   1D03           00469    BTFSS        STATUS,Z
+028C   2???           00470         GOTO    TEMP
+Warning[203]: Found opcode in column 1. (RETURN)
+028D   0008           00471 RETURN
+                      00472 
+                      00473 ;-------------------------------------------------------------------------------------------------------
+                            ----------
+                      00474 ;PARA ESTA RUTINA SE UTILIZA UNA FORMA DE RESTAR SIMILAR A LA DE LOS NÚMERO DECIMALES
+                      00475 ; SE RESTAN LA UNIDADES Y SI ESL RESULTADO ES NEGATIVO SE SUMA UN DIEZ PERO SE RESTA UN 1 EL
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00476 ;EL VALOR DE DECENAS. LUEGO CON EL RESULTADO EN DECENAS, SE RESTAN LAS DECENAS Y SE EVALUA NUEVAMENTE SI
+                             ES NEGATIVO
+                      00477 ;SI LO ES ENTONCES SE SIMA 10 Y SE RESTA UNO A LAS CENTENAS Y FINALMENTE, SE RESTA EL VALOR OBTENIDO EN 
+                            CENTENAS
+                      00478 ; Y SI EL RESULTADO ES NEGATIVO, NO ES POSIBLE HACER LA RESTA, PERO SI NO LO ES SE ASIGNA EL VALOR OBTEN
+                            IDO 
+                      00479 ; A SALDO
+028E                  00480 RETIRO:
+028E   0826           00481     MOVF        0X26,0
+028F   00B3           00482     MOVWF       0X33
+0290   0825           00483     MOVF        0X25,0
+0291   00B2           00484     MOVWF       0X32
+0292   0824           00485     MOVF        0X24,0
+0293   00B1           00486     MOVWF       0X31
+                      00487     
+0294   01A7           00488     CLRF        0X27
+0295   01A8           00489     CLRF        0X28
+0296   01A9           00490     CLRF        0X29
+0297   10B5           00491     BCF         FLAG,1
+                      00492     
+0298   0830           00493     MOVF        0X30,0
+0299   0233           00494     SUBWF       0X33,0
+029A   00A9           00495     MOVWF       0X29
+029B   1803           00496     BTFSC       STATUS,C
+029C   2???           00497         GOTO    $+4
+029D   300A           00498     MOVLW       .10
+029E   07A9           00499     ADDWF       0X29,1
+029F   03B2           00500     DECF        0X32,1
+                      00501     
+02A0   082F           00502     MOVF        0X2F,0
+02A1   0232           00503     SUBWF       0X32,0
+02A2   00A8           00504     MOVWF       0X28
+02A3   1FA8           00505     BTFSS       0X28,7
+02A4   2???           00506         GOTO    $+4
+02A5   300A           00507     MOVLW       .10
+02A6   07A8           00508     ADDWF       0X28,1
+02A7   03B1           00509     DECF        0X31,1
+                      00510     
+02A8   082E           00511     MOVF        0X2E,0
+02A9   0231           00512     SUBWF       0X31,0
+02AA   00A7           00513     MOVWF       0X27
+02AB   1FA7           00514     BTFSS       0X27,7
+02AC   2???           00515         GOTO    $+3
+02AD   14B5           00516     BSF         FLAG,1
+02AE   0008           00517     RETURN
+02AF   0829           00518     MOVF        0X29,0
+02B0   00A6           00519     MOVWF       0X26
+02B1   0828           00520     MOVF        0X28,0
+02B2   00A5           00521     MOVWF       0X25
+02B3   0827           00522     MOVF        0X27,0
+02B4   00A4           00523     MOVWF       0X24
+Warning[203]: Found opcode in column 1. (RETURN)
+02B5   0008           00524 RETURN
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 21
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00074     
+23F4 3EFF             00075     END
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 22
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ABDEN                             00000000
+ABDOVF                            00000007
+ACKDT                             00000005
+ACKEN                             00000004
+ACKSTAT                           00000006
+ADCON0                            0000001F
+ADCON1                            0000009F
+ADCS0                             00000006
+ADCS1                             00000007
+ADDEN                             00000003
+ADFM                              00000007
+ADIE                              00000006
+ADIF                              00000006
+ADON                              00000000
+ADRESH                            0000001E
+ADRESL                            0000009E
+ANS0                              00000000
+ANS1                              00000001
+ANS10                             00000002
+ANS11                             00000003
+ANS12                             00000004
+ANS13                             00000005
+ANS2                              00000002
+ANS3                              00000003
+ANS4                              00000004
+ANS5                              00000005
+ANS6                              00000006
+ANS7                              00000007
+ANS8                              00000000
+ANS9                              00000001
+ANSEL                             00000188
+ANSELH                            00000189
+ATRAS                             0000024E
+ATRAS_BANCO                       00000221
+BAUDCTL                           00000187
+BCLIE                             00000003
+BCLIF                             00000003
+BF                                00000000
+BRG0                              00000000
+BRG1                              00000001
+BRG10                             00000002
+BRG11                             00000003
+BRG12                             00000004
+BRG13                             00000005
+BRG14                             00000006
+BRG15                             00000007
+BRG16                             00000003
+BRG2                              00000002
+BRG3                              00000003
+BRG4                              00000004
+BRG5                              00000005
+BRG6                              00000006
+BRG7                              00000007
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 23
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+BRG8                              00000000
+BRG9                              00000001
+BRGH                              00000002
+BUS_DATOS                         PORTD
+C                                 00000000
+C1CH0                             00000000
+C1CH1                             00000001
+C1IE                              00000005
+C1IF                              00000005
+C1OE                              00000005
+C1ON                              00000007
+C1OUT                             00000006
+C1POL                             00000004
+C1R                               00000002
+C1RSEL                            00000005
+C1SEN                             00000005
+C2CH0                             00000000
+C2CH1                             00000001
+C2IE                              00000006
+C2IF                              00000006
+C2OE                              00000005
+C2ON                              00000007
+C2OUT                             00000006
+C2POL                             00000004
+C2R                               00000002
+C2REN                             00000004
+C2RSEL                            00000004
+C2SYNC                            00000000
+CAM_CONTR_INV                     00000218
+CCP1CON                           00000017
+CCP1IE                            00000002
+CCP1IF                            00000002
+CCP1M0                            00000000
+CCP1M1                            00000001
+CCP1M2                            00000002
+CCP1M3                            00000003
+CCP1X                             00000005
+CCP1Y                             00000004
+CCP2CON                           0000001D
+CCP2IE                            00000000
+CCP2IF                            00000000
+CCP2M0                            00000000
+CCP2M1                            00000001
+CCP2M2                            00000002
+CCP2M3                            00000003
+CCP2X                             00000005
+CCP2Y                             00000004
+CCPR1                             00000015
+CCPR1H                            00000016
+CCPR1L                            00000015
+CCPR2                             0000001B
+CCPR2H                            0000001C
+CCPR2L                            0000001B
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 24
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+CHS3                              00000005
+CKE                               00000006
+CKP                               00000004
+CLRSCR                            000000FA
+CM1CON0                           00000107
+CM2CON0                           00000108
+CM2CON1                           00000109
+CMD                               00000173
+CONTRASENA                        0000002A
+CONT_CONTRASENA                   00000041
+CREN                              00000004
+CSRC                              00000007
+CURSOR_D                          00000100
+CURSOR_I                          00000103
+D                                 00000005
+DATA_ADDRESS                      00000005
+DATO_ING                          0000025A
+DATO_ING_BANCO                    00000233
+DC                                00000001
+DC1B0                             00000004
+DC1B1                             00000005
+DC2B0                             00000004
+DC2B1                             00000005
+DEFAULT                           0000023D
+DESPLAZAMIENTO                    00000015
+DESPLAZAMIENTO_BANCO              00000192
+D_A                               00000005
+D_NOT_A                           00000005
+E                                 PORTE,2
+ECCPAS                            0000009C
+ECCPAS0                           00000004
+ECCPAS1                           00000005
+ECCPAS2                           00000006
+ECCPASE                           00000007
+EEADR                             0000010D
+EEADRH                            0000010F
+EECON1                            0000018C
+EECON2                            0000018D
+EEDAT                             0000010C
+EEDATA                            0000010C
+EEDATH                            0000010E
+EEIE                              00000004
+EEIF                              00000004
+EEPGD                             00000007
+END_TAG_1                         00000195
+END_TAG_3                         00000239
+ENTER                             000000FD
+ENTER_CMD                         00000261
+ENTER_CMD_BANCO                   0000027E
+ERRORES                           0000016B
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 25
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ESPERAR_LCD                       000000E0
+ESPERA_Xms                        00000284
+F                                 00000001
+FERR                              00000002
+FIN_INGRESO_CONTRASENA            00000260
+FLAG                              00000035
+FLAG_ISR                          00000036
+FSR                               00000004
+FVREN                             00000000
+GCEN                              00000007
+GIE                               00000007
+GO                                00000001
+GO_DONE                           00000001
+GO_NOT_DONE                       00000001
+HAB                               00000247
+HAB_BANCO                         00000200
+HTS                               00000002
+I                                 0000003E
+I2C_DATA                          00000005
+I2C_READ                          00000002
+I2C_START                         00000003
+I2C_STOP                          00000004
+INDF                              00000000
+INGRESO_CONTRASENA                00000245
+ING_CONTR_TAG_1                   0000010D
+ING_CONTR_TAG_2                   0000019E
+ING_CONTR_TAG_3                   000001D4
+INICIO_CONTR                      0000026A
+INI_DESPLAZAMIENTO                00000012
+INI_DESPLAZAMIENTO_BANCO          0000013A
+INI_VAR                           0000009B
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTENTOS                          00000042
+INTF                              00000001
+IOCB                              00000096
+IOCB0                             00000000
+IOCB1                             00000001
+IOCB2                             00000002
+IOCB3                             00000003
+IOCB4                             00000004
+IOCB5                             00000005
+IOCB6                             00000006
+IOCB7                             00000007
+IRCF0                             00000004
+IRCF1                             00000005
+IRCF2                             00000006
+IRP                               00000007
+J                                 0000003F
+LCD_BUSSY_FLAG                    0000003D
+LCD_CMD                           000000CB
+LCD_CONFIG                        000000AA
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 26
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+LCD_DATO                          000000D5
+LCD_INIT                          000000B7
+LIM_ESP                           00000040
+LTS                               00000001
+MAIN                              00000005
+MC1OUT                            00000007
+MC2OUT                            00000006
+MENU_BANCO                        00000106
+MS                                0000000A
+MSK                               00000093
+MSK0                              00000000
+MSK1                              00000001
+MSK2                              00000002
+MSK3                              00000003
+MSK4                              00000004
+MSK5                              00000005
+MSK6                              00000006
+MSK7                              00000007
+NOT_A                             00000005
+NOT_ADDRESS                       00000005
+NOT_BO                            00000000
+NOT_BOR                           00000000
+NOT_DONE                          00000001
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RBPU                          00000007
+NOT_RC8                           00000006
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+NOT_TX8                           00000006
+NOT_W                             00000002
+NOT_WRITE                         00000002
+NUMERO                            00000020
+NUMERO_TEMPORAL                   00000034
+OERR                              00000001
+OPTION_REG                        00000081
+OSCCON                            0000008F
+OSCTUNE                           00000090
+OSC_CONF                          0000007A
+OSFIE                             00000007
+OSFIF                             00000007
+OSTS                              00000003
+P                                 00000004
+P1M0                              00000006
+P1M1                              00000007
+PCL                               00000002
+PCLATH                            0000000A
+PCON                              0000008E
+PDC0                              00000000
+PDC1                              00000001
+PDC2                              00000002
+PDC3                              00000003
+PDC4                              00000004
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 27
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+PDC5                              00000005
+PDC6                              00000006
+PEIE                              00000006
+PEN                               00000002
+PIE1                              0000008C
+PIE2                              0000008D
+PIR1                              0000000C
+PIR2                              0000000D
+PORTA                             00000005
+PORTB                             00000006
+PORTC                             00000007
+PORTD                             00000008
+PORTE                             00000009
+PORT_CONF                         00000081
+PR2                               00000092
+PRSEN                             00000007
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+PSSAC0                            00000002
+PSSAC1                            00000003
+PSSBD0                            00000000
+PSSBD1                            00000001
+PSTRCON                           0000009D
+PULSR                             00000002
+PULSS                             00000003
+PWM1CON                           0000009B
+R                                 00000002
+RA0                               00000000
+RA1                               00000001
+RA2                               00000002
+RA3                               00000003
+RA4                               00000004
+RA5                               00000005
+RA6                               00000006
+RA7                               00000007
+RB0                               00000000
+RB1                               00000001
+RB2                               00000002
+RB3                               00000003
+RB4                               00000004
+RB5                               00000005
+RB6                               00000006
+RB7                               00000007
+RBIE                              00000003
+RBIF                              00000000
+RC0                               00000000
+RC1                               00000001
+RC2                               00000002
+RC3                               00000003
+RC4                               00000004
+RC5                               00000005
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 28
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+RC6                               00000006
+RC7                               00000007
+RC8_9                             00000006
+RC9                               00000006
+RCD8                              00000000
+RCEN                              00000003
+RCIDL                             00000006
+RCIE                              00000005
+RCIF                              00000005
+RCREG                             0000001A
+RCSTA                             00000018
+RD                                00000000
+RD0                               00000000
+RD1                               00000001
+RD2                               00000002
+RD3                               00000003
+RD4                               00000004
+RD5                               00000005
+RD6                               00000006
+RD7                               00000007
+RE0                               00000000
+RE1                               00000001
+RE2                               00000002
+RE3                               00000003
+READ_WRITE                        00000002
+REINICIO_PROG                     00000007
+REST                              0000002E
+RET100ms                          00000026
+RET10ms                           00000038
+RET1ms                            00000059
+RET1s                             0000001C
+RET2.56s                          00000018
+RET200ms                          00000024
+RET20ms                           00000036
+RET2ms                            00000057
+RET2s                             0000001A
+RET300ms                          00000022
+RET30ms                           00000034
+RET3ms                            00000055
+RET400ms                          00000020
+RET40ms                           00000032
+RET4ms                            00000053
+RET500ms                          0000001E
+RET50ms                           00000030
+RET5ms                            00000051
+RET5s                             0000006A
+RET60ms                           0000002E
+RET6ms                            0000004F
+RET70ms                           0000002C
+RET7ms                            0000004D
+RET80ms                           0000002A
+RET8ms                            0000004B
+RET90ms                           00000028
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 29
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+RET9ms                            00000049
+RETIRO                            0000028E
+RET_POSIBLE                       00000189
+RET_VAL                           0000017F
+RP0                               00000005
+RP1                               00000006
+RS                                PORTE,0
+RSEN                              00000001
+RW                                PORTE,1
+RX9                               00000006
+RX9D                              00000000
+R_NOT_W                           00000002
+R_W                               00000002
+S                                 00000003
+SALDO                             00000024
+SALDO_AUX                         00000031
+SALDO_TEMP                        00000027
+SBOREN                            00000004
+SCKP                              00000004
+SCS                               00000000
+SEN                               00000000
+SENDB                             00000003
+SET_INSTRUCT                      0000024A
+SET_INSTRUCT_BANCO                00000203
+SHIFT_SCREEN_D                    000000F4
+SHIFT_SCREEN_I                    000000F7
+SMP                               00000007
+SPBRG                             00000099
+SPBRGH                            0000009A
+SPEN                              00000007
+SR0                               00000006
+SR1                               00000007
+SRCON                             00000185
+SREN                              00000005
+SSPADD                            00000093
+SSPBUF                            00000013
+SSPCON                            00000014
+SSPCON2                           00000091
+SSPEN                             00000005
+SSPIE                             00000003
+SSPIF                             00000003
+SSPM0                             00000000
+SSPM1                             00000001
+SSPM2                             00000002
+SSPM3                             00000003
+SSPMSK                            00000093
+SSPOV                             00000006
+SSPSTAT                           00000094
+START                             0000000D
+STATUS                            00000003
+STRA                              00000000
+STRB                              00000001
+STRC                              00000002
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 30
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+STRD                              00000003
+STRSYNC                           00000004
+SWDTEN                            00000000
+SYNC                              00000004
+S_TEMP                            00000038
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000010
+T1GINV                            00000007
+T1GIV                             00000007
+T1GSS                             00000001
+T1INSYNC                          00000002
+T1OSCEN                           00000003
+T1SYNC                            00000002
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000012
+TAG_1                             00000108
+TAG_1_1                           00000134
+TAG_2                             00000199
+TAG_2_1                           000001C5
+TAG_3                             000001CF
+TAG_3_1                           000001FB
+TECLA                             00000037
+TECLADO_CONFIG                    00000088
+TEMP                              00000285
+TMR0                              00000001
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR1                              0000000E
+TMR1CS                            00000001
+TMR1GE                            00000006
+TMR1H                             0000000F
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             0000000E
+TMR1ON                            00000000
+TMR2                              00000011
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOUTPS0                           00000003
+TOUTPS1                           00000004
+TOUTPS2                           00000005
+TOUTPS3                           00000006
+TRISA                             00000085
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 31
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TRISA3                            00000003
+TRISA4                            00000004
+TRISA5                            00000005
+TRISA6                            00000006
+TRISA7                            00000007
+TRISB                             00000086
+TRISB0                            00000000
+TRISB1                            00000001
+TRISB2                            00000002
+TRISB3                            00000003
+TRISB4                            00000004
+TRISB5                            00000005
+TRISB6                            00000006
+TRISB7                            00000007
+TRISC                             00000087
+TRISC0                            00000000
+TRISC1                            00000001
+TRISC2                            00000002
+TRISC3                            00000003
+TRISC4                            00000004
+TRISC5                            00000005
+TRISC6                            00000006
+TRISC7                            00000007
+TRISD                             00000088
+TRISD0                            00000000
+TRISD1                            00000001
+TRISD2                            00000002
+TRISD3                            00000003
+TRISD4                            00000004
+TRISD5                            00000005
+TRISD6                            00000006
+TRISD7                            00000007
+TRISE                             00000089
+TRISE0                            00000000
+TRISE1                            00000001
+TRISE2                            00000002
+TRISE3                            00000003
+TRMT                              00000001
+TUN0                              00000000
+TUN1                              00000001
+TUN2                              00000002
+TUN3                              00000003
+TUN4                              00000004
+TX8_9                             00000006
+TX9                               00000006
+TX9D                              00000000
+TXD8                              00000000
+TXEN                              00000005
+TXIE                              00000004
+TXIF                              00000004
+TXREG                             00000019
+TXSTA                             00000098
+UA                                00000001
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 32
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ULPWUE                            00000005
+ULPWUIE                           00000002
+ULPWUIF                           00000002
+VCFG0                             00000004
+VCFG1                             00000005
+VR0                               00000000
+VR1                               00000001
+VR2                               00000002
+VR3                               00000003
+VRCON                             00000097
+VREN                              00000007
+VROE                              00000006
+VRR                               00000005
+VRSS                              00000004
+W                                 00000000
+WCOL                              00000007
+WDTCON                            00000105
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WPUB                              00000095
+WPUB0                             00000000
+WPUB1                             00000001
+WPUB2                             00000002
+WPUB3                             00000003
+WPUB4                             00000004
+WPUB5                             00000005
+WPUB6                             00000006
+WPUB7                             00000007
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+WUE                               00000001
+W_TEMP                            00000039
+Z                                 00000002
+_BOR21V                           00003EFF
+_BOR40V                           00003FFF
+_BOR4V_BOR21V                     00003EFF
+_BOR4V_BOR40V                     00003FFF
+_BOREN_NSLEEP                     00003EFF
+_BOREN_OFF                        00003CFF
+_BOREN_ON                         00003FFF
+_BOREN_SBODEN                     00003DFF
+_BOR_NSLEEP                       00003EFF
+_BOR_OFF                          00003CFF
+_BOR_ON                           00003FFF
+_BOR_SBODEN                       00003DFF
+_CONFIG1                          00002007
+_CONFIG2                          00002008
+_CPD_OFF                          00003FFF
+_CPD_ON                           00003F7F
+_CP_OFF                           00003FFF
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 33
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_CP_ON                            00003FBF
+_DEBUG_OFF                        00003FFF
+_DEBUG_ON                         00001FFF
+_DEVID1                           00002006
+_EC_OSC                           00003FFB
+_EXTRC                            00003FFF
+_EXTRCIO                          00003FFE
+_EXTRC_OSC_CLKOUT                 00003FFF
+_EXTRC_OSC_NOCLKOUT               00003FFE
+_FCMEN_OFF                        000037FF
+_FCMEN_ON                         00003FFF
+_FOSC_EC                          00003FFB
+_FOSC_EXTRC_CLKOUT                00003FFF
+_FOSC_EXTRC_NOCLKOUT              00003FFE
+_FOSC_HS                          00003FFA
+_FOSC_INTRC_CLKOUT                00003FFD
+_FOSC_INTRC_NOCLKOUT              00003FFC
+_FOSC_LP                          00003FF8
+_FOSC_XT                          00003FF9
+_HS_OSC                           00003FFA
+_IDLOC0                           00002000
+_IDLOC1                           00002001
+_IDLOC2                           00002002
+_IDLOC3                           00002003
+_IESO_OFF                         00003BFF
+_IESO_ON                          00003FFF
+_INTOSC                           00003FFD
+_INTOSCIO                         00003FFC
+_INTRC_OSC_CLKOUT                 00003FFD
+_INTRC_OSC_NOCLKOUT               00003FFC
+_LP_OSC                           00003FF8
+_LVP_OFF                          00002FFF
+_LVP_ON                           00003FFF
+_MAIN_PROG_0040                   00000040
+_MAIN_PROG_0043                   00000043
+_MAIN_PROG_0046                   00000046
+_MAIN_PROG_0061                   00000061
+_MAIN_PROG_0064                   00000064
+_MAIN_PROG_0067                   00000067
+_MAIN_PROG_0071                   00000071
+_MAIN_PROG_0074                   00000074
+_MAIN_PROG_0077                   00000077
+_MAIN_PROG_00A2                   000000A2
+_MAIN_PROG_00EE                   000000EE
+_MAIN_PROG_0110                   00000110
+_MAIN_PROG_0116                   00000116
+_MAIN_PROG_012F                   0000012F
+_MAIN_PROG_0142                   00000142
+_MAIN_PROG_014D                   0000014D
+_MAIN_PROG_0158                   00000158
+_MAIN_PROG_0163                   00000163
+_MAIN_PROG_0174                   00000174
+_MAIN_PROG_0178                   00000178
+MPASM 5.72                       LAB_LCD.ASM   4-27-2017  6:36:11         PAGE 34
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_MAIN_PROG_01A1                   000001A1
+_MAIN_PROG_01A7                   000001A7
+_MAIN_PROG_01C0                   000001C0
+_MAIN_PROG_01D7                   000001D7
+_MAIN_PROG_01DD                   000001DD
+_MAIN_PROG_01F6                   000001F6
+_MAIN_PROG_0201                   00000201
+_MAIN_PROG_0222                   00000222
+_MAIN_PROG_0226                   00000226
+_MAIN_PROG_0248                   00000248
+_MAIN_PROG_0264                   00000264
+_MAIN_PROG_0271                   00000271
+_MAIN_PROG_029C                   0000029C
+_MAIN_PROG_02A4                   000002A4
+_MAIN_PROG_02AC                   000002AC
+_MCLRE_OFF                        00003FDF
+_MCLRE_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FEF
+_WDTE_OFF                         00003FF7
+_WDTE_ON                          00003FFF
+_WDT_OFF                          00003FF7
+_WDT_ON                           00003FFF
+_WRT_1FOURTH                      00003BFF
+_WRT_256                          00003DFF
+_WRT_HALF                         000039FF
+_WRT_OFF                          00003FFF
+_XT_OSC                           00003FF9
+__16F887                          00000001
+m                                 0000003A
+n                                 0000003B
+o                                 0000003C
+p                                 0016F887
+start                             0000003A
+start_1ms                         0000005B
+
+Errors   :    20
+Warnings :    66 reported,     0 suppressed
+Messages :     7 reported,     0 suppressed
+
+
